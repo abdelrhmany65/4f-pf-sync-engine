@@ -154,6 +154,8 @@ class FourF_PF_Processor {
         $this->skipped_property_ids = array();
         $properties_seen = 0;
         $api_error_occurred = false;
+        $sync_completed = false;
+        $api_total_pages = 0;
 
         // Dynamic pagination: read total_pages from API response on first call,
         // fall back to filter-based max if API doesn't provide pagination info.
@@ -166,10 +168,10 @@ class FourF_PF_Processor {
 
             // On first successful API response, read total_pages from the client
             if ( 1 === $page && false !== $properties_feed && ! empty( $properties_feed ) ) {
-                $api_total_pages = $this->api_client->get_total_pages();
+                $api_total_pages = (int) $this->api_client->get_total_pages();
                 if ( $api_total_pages > 0 ) {
                     $max_pages = min( $api_total_pages, $max_pages );
-                    FourF_PF_Logger::log( "Pagination adjusted: API reports {$api_total_pages} total pages. Using min({$api_total_pages}, {$max_pages}) = {$max_pages}.", 'INFO' );
+                    FourF_PF_Logger::log( "Pagination adjusted: API reports {$api_total_pages} total pages. Processing up to {$max_pages} pages within the configured safety limit.", 'INFO' );
                 }
             }
 
@@ -181,6 +183,7 @@ class FourF_PF_Processor {
 
             if ( empty( $properties_feed ) ) {
                 FourF_PF_Logger::log( "Reached end of feed at page ($page).", 'INFO' );
+                $sync_completed = true;
                 break;
             }
 
@@ -195,10 +198,17 @@ class FourF_PF_Processor {
                 wp_cache_flush_runtime();
             }
 
+            // A trusted API-reported final page completes the feed without an extra empty request.
+            if ( $api_total_pages > 0 && $page >= $api_total_pages ) {
+                $sync_completed = true;
+                FourF_PF_Logger::log( "Reached API-reported final page ({$api_total_pages}).", 'INFO' );
+                break;
+            }
+
             $page++;
         }
 
-        if ( $page > $max_pages ) {
+        if ( $page > $max_pages && ! $sync_completed ) {
             FourF_PF_Logger::log( "Warning: Reached max page limit ($max_pages). Additional data may exist on the API.", 'WARNING' );
         }
 
@@ -206,12 +216,14 @@ class FourF_PF_Processor {
             FourF_PF_Logger::log( "Sync stopped due to timeout after {$max_sync_seconds} seconds.", 'WARNING' );
         }
 
-        // Safety switch: if API returned zero properties OR any page returned an error, ABORT purge
-        // Prevents catastrophic mass deletion caused by temporary upstream API failures.
-        if ( 0 === $properties_seen || $api_error_occurred ) {
+        // Purge is permitted only after the complete upstream feed has been read.
+        // Timeouts and local page limits are partial syncs, not evidence of deleted properties.
+        if ( ! $sync_completed || 0 === $properties_seen || $api_error_occurred ) {
+            $reason = ! $sync_completed
+                ? 'Feed was not fully processed (timeout or page limit reached).'
+                : ( 0 === $properties_seen ? 'API returned zero properties.' : 'API error detected.' );
             FourF_PF_Logger::log(
-                "CRITICAL SAFETY: " . ( 0 === $properties_seen ? "API returned zero properties." : "API error detected." )
-                . " Purge operation ABORTED to prevent catastrophic data loss.",
+                "CRITICAL SAFETY: {$reason} Bulk timestamp update and purge operations ABORTED to prevent data loss.",
                 'ERROR'
             );
         } else {
