@@ -35,6 +35,11 @@ class FourF_PF_API_Client {
     }
 
     public function fetch_properties( $page = 1, $retry_count = 0 ) {
+        // Reset pagination metadata at the beginning of each sync cycle.
+        if ( 1 === (int) $page ) {
+            $this->total_pages = 0;
+        }
+
         // =============================================
         // MOCK MODE: Return fake data for testing without real API Key.
         // Activate by defining FOURF_PF_MOCK_MODE in wp-config.php:
