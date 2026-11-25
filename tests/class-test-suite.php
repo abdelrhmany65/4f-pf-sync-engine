@@ -49,8 +49,20 @@ class FourF_PF_Test_Suite {
      * Render the test page.
      */
     public function render_test_page() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You do not have permission to access this page.', '4f-pf-sync' ) );
+        }
+
         $run_tests = isset( $_GET['run_tests'] ) && '1' === $_GET['run_tests'];
         $cleanup   = isset( $_GET['cleanup'] ) && '1' === $_GET['cleanup'];
+
+        if ( $run_tests ) {
+            check_admin_referer( 'fourf_pf_run_tests' );
+        }
+
+        if ( $cleanup ) {
+            check_admin_referer( 'fourf_pf_cleanup_tests' );
+        }
 
         ?>
         <div class="wrap">
@@ -59,10 +71,10 @@ class FourF_PF_Test_Suite {
             <hr>
 
             <div style="margin: 20px 0; display: flex; gap: 10px; flex-wrap: wrap;">
-                <a href="<?php echo esc_url( add_query_arg( 'run_tests', '1' ) ); ?>" class="button button-primary button-large" style="height: 40px; padding: 0 25px;">
+                <a href="<?php echo esc_url( wp_nonce_url( add_query_arg( 'run_tests', '1' ), 'fourf_pf_run_tests' ) ); ?>" class="button button-primary button-large" style="height: 40px; padding: 0 25px;">
                     <span class="dashicons dashicons-controls-play" style="vertical-align: middle; margin-top: -3px;"></span> Run All Tests
                 </a>
-                <a href="<?php echo esc_url( add_query_arg( 'cleanup', '1' ) ); ?>" class="button button-secondary button-large" style="height: 40px; padding: 0 25px; border-color: #dc3232; color: #dc3232;"
+                <a href="<?php echo esc_url( wp_nonce_url( add_query_arg( 'cleanup', '1' ), 'fourf_pf_cleanup_tests' ) ); ?>" class="button button-secondary button-large" style="height: 40px; padding: 0 25px; border-color: #dc3232; color: #dc3232;"
                    onclick="return confirm('This will delete ALL test properties, terms, and attachments created by the test suite. Continue?');">
                     <span class="dashicons dashicons-trash" style="vertical-align: middle; margin-top: -3px;"></span> Cleanup Test Data
                 </a>
